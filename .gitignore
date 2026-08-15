@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local planning docs, raw source data, and screenshots — not for version control
+/plans
