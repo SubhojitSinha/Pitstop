@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-opacity=".12"/>
+    </filter>
+  </defs>
+
+  <!-- App tile -->
+  <rect x="128" y="128" width="768" height="768" rx="150" fill="#FFFFFF" filter="url(#shadow)"/>
+
+  <!-- Shopping bag -->
+  <path d="M302 390
+           C302 365 322 345 347 345
+           H566
+           C591 345 611 365 611 390
+           L633 745
+           C635 777 609 802 577 802
+           H336
+           C304 802 278 777 280 745 Z"
+        fill="#1B6B72"/>
+
+  <!-- Bag handle -->
+  <path d="M383 390
+           V323
+           C383 266 424 225 481 225
+           C538 225 579 266 579 323
+           V390"
+        fill="none" stroke="#1B6B72" stroke-width="34"
+        stroke-linecap="round"/>
+
+  <!-- Receipt -->
+  <path d="M384 345 H558 V600
+           L536 625 L514 600 L492 625 L470 600
+           L448 625 L426 600 L404 625 L384 600 Z"
+        fill="#FFFFFF"/>
+
+  <!-- Receipt lines -->
+  <g fill="#1B6B72">
+    <rect x="410" y="405" width="118" height="18" rx="9"/>
+    <rect x="410" y="454" width="118" height="18" rx="9"/>
+    <rect x="410" y="503" width="118" height="18" rx="9"/>
+  </g>
+
+  <!-- Sales bars -->
+  <g fill="#DD5A26">
+    <rect x="532" y="631" width="72" height="171" rx="13"/>
+    <rect x="626" y="568" width="72" height="234" rx="13"/>
+    <rect x="720" y="505" width="72" height="297" rx="13"/>
+  </g>
+
+  <!-- Teal baseline -->
+  <rect x="500" y="802" width="312" height="20" rx="10" fill="#1B6B72"/>
+
+  <!-- Growth arrow -->
+  <path d="M482 674
+           L590 570
+           L638 610
+           L754 494"
+        fill="none" stroke="#DD5A26" stroke-width="30"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Arrow head -->
+  <path d="M720 491 L770 477 L756 527"
+        fill="none" stroke="#DD5A26" stroke-width="30"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
