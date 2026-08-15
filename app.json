@@ -26,7 +26,14 @@
       "expo-router",
       "expo-sqlite",
       "expo-file-system",
-      "expo-document-picker"
+      "expo-document-picker",
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow Pitstop to use Face ID to unlock the app."
+        }
+      ]
     ]
   }
 }

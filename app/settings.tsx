@@ -1,18 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useTheme } from '@/hooks/useTheme';
 import { useDataExchangeService } from '@/hooks/useServices';
 import { Stepper } from '@/components/Stepper';
 import { InlineDatePicker } from '@/components/InlineDatePicker';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
+import { SetPinModal } from '@/components/SetPinModal';
 import { getTopSellersCount, setTopSellersCount } from '@/lib/preferences';
 import { toISODate } from '@/lib/periods';
+import { hasPinSet, clearPin, isBiometricEnabled, setBiometricEnabled } from '@/lib/appLock';
+import { useAppLock } from '@/lock/AppLockContext';
 import type { ImportResult } from '@/db/services/DataExchangeService';
 
 type ExportKind = 'products' | 'sales' | 'purchases';
@@ -29,10 +33,51 @@ export default function SettingsScreen() {
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const { refresh: refreshAppLock } = useAppLock();
+  const [pinSet, setPinSet] = useState(false);
+  const [biometricOn, setBiometricOn] = useState(false);
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [showSetPinModal, setShowSetPinModal] = useState(false);
 
-  useEffect(() => {
-    getTopSellersCount().then(setTopSellers);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      getTopSellersCount().then(setTopSellers);
+      hasPinSet().then(setPinSet);
+      isBiometricEnabled().then(setBiometricOn);
+      Promise.all([LocalAuthentication.hasHardwareAsync(), LocalAuthentication.isEnrolledAsync()]).then(
+        ([hardware, enrolled]) => setBiometricSupported(hardware && enrolled)
+      );
+    }, [])
+  );
+
+  function handlePinModalDone() {
+    setShowSetPinModal(false);
+    setPinSet(true);
+    refreshAppLock();
+  }
+
+  function handleRemovePin() {
+    Alert.alert('Remove PIN?', 'The app will no longer lock when you open it.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          await clearPin();
+          setPinSet(false);
+          setBiometricOn(false);
+          await refreshAppLock();
+        },
+      },
+    ]);
+  }
+
+  async function handleToggleBiometric() {
+    const next = !biometricOn;
+    setBiometricOn(next);
+    await setBiometricEnabled(next);
+    await refreshAppLock();
+  }
 
   async function handleTopSellersChange(next: number) {
     setTopSellers(next);
@@ -64,6 +109,43 @@ export default function SettingsScreen() {
       }
     } catch (err) {
       Alert.alert('Export failed', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function backupNow() {
+    setBusy('backup');
+    try {
+      const file = await dataExchangeService.createBackupZip();
+      const available = await Sharing.isAvailableAsync();
+      if (available) {
+        await Sharing.shareAsync(file.uri, { mimeType: 'application/zip', UTI: 'public.zip-archive' });
+      } else {
+        Alert.alert('Backup created', `Saved to ${file.uri}`);
+      }
+    } catch (err) {
+      Alert.alert('Backup failed', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function restoreFromBackup() {
+    const picked = await DocumentPicker.getDocumentAsync({ type: '*/*' });
+    if (picked.canceled || !picked.assets[0]) return;
+
+    setBusy('restore');
+    try {
+      const result = await dataExchangeService.restoreFromBackupZip(picked.assets[0].uri);
+      const total = result.products.imported + result.sales.imported + result.purchases.imported;
+      Alert.alert(
+        'Restore complete',
+        `${result.products.imported} products, ${result.sales.imported} sales, ${result.purchases.imported} purchases imported` +
+          (total === 0 ? ' (nothing new — already up to date).' : '.')
+      );
+    } catch (err) {
+      Alert.alert('Restore failed', err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(null);
     }
@@ -113,6 +195,46 @@ export default function SettingsScreen() {
         </View>
 
         <View>
+          <Text style={[styles.sectionTitle, { color: colors.ink }]}>App Lock</Text>
+          <View
+            style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.line, borderRadius: radius.card }]}
+          >
+            <Text style={{ color: colors.ink, fontSize: 13, fontWeight: '700', marginBottom: 2 }}>
+              {pinSet ? 'PIN lock is on' : 'PIN lock is off'}
+            </Text>
+            <Text style={{ color: colors.inkSoft, fontSize: 12, marginBottom: 12 }}>
+              {pinSet ? 'A PIN is required every time you open the app.' : 'Require a PIN to open the app.'}
+            </Text>
+
+            <View style={styles.actionCol}>
+              <ExportButton
+                label={pinSet ? 'Change PIN' : 'Set a PIN'}
+                busy={false}
+                onPress={() => setShowSetPinModal(true)}
+              />
+              {pinSet ? <ExportButton label="Remove PIN" busy={false} onPress={handleRemovePin} /> : null}
+            </View>
+
+            {pinSet && biometricSupported ? (
+              <Pressable onPress={handleToggleBiometric} style={[styles.toggleRow, { marginTop: 14 }]}>
+                <View
+                  style={[
+                    styles.checkbox,
+                    { borderColor: colors.lineStrong },
+                    biometricOn && { backgroundColor: colors.ink },
+                  ]}
+                >
+                  {biometricOn ? <Ionicons name="checkmark" size={13} color={colors.bg} /> : null}
+                </View>
+                <Text style={{ color: colors.ink, fontSize: 13, fontWeight: '600' }}>
+                  Also allow Face ID / Fingerprint
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+
+        <View>
           <Text style={[styles.sectionTitle, { color: colors.ink }]}>Home screen</Text>
           <View
             style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.line, borderRadius: radius.card }]}
@@ -124,6 +246,22 @@ export default function SettingsScreen() {
               How many best-selling products appear on Home.
             </Text>
             <Stepper value={topSellers} onChange={handleTopSellersChange} min={1} />
+          </View>
+        </View>
+
+        <View>
+          <Text style={[styles.sectionTitle, { color: colors.ink }]}>Backup</Text>
+          <Text style={{ color: colors.inkSoft, fontSize: 12, marginBottom: 8 }}>
+            Bundles every product, sale, and purchase into one file. Pick Google Drive (or any app) from the share
+            sheet to save it wherever you like — no separate sign-in needed.
+          </Text>
+          <View
+            style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.line, borderRadius: radius.card }]}
+          >
+            <View style={styles.actionCol}>
+              <ExportButton label="Back up now" busy={busy === 'backup'} onPress={backupNow} />
+              <ExportButton label="Restore from backup" busy={busy === 'restore'} onPress={restoreFromBackup} />
+            </View>
           </View>
         </View>
 
@@ -214,6 +352,12 @@ export default function SettingsScreen() {
         maximumDate={new Date()}
         onChange={setEndDate}
         onClose={() => setShowEndPicker(false)}
+      />
+
+      <SetPinModal
+        visible={showSetPinModal}
+        onCancel={() => setShowSetPinModal(false)}
+        onDone={handlePinModalDone}
       />
     </SafeAreaView>
   );

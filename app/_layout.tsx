@@ -5,11 +5,15 @@ import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider } from '@/theme/ThemeContext';
 import { useTheme } from '@/hooks/useTheme';
 import { useDatabaseReady } from '@/hooks/useDatabaseReady';
+import { AppLockProvider, useAppLock } from '@/lock/AppLockContext';
+import { LockScreen } from '@/components/LockScreen';
 
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <RootLayoutInner />
+      <AppLockProvider>
+        <RootLayoutInner />
+      </AppLockProvider>
     </ThemeProvider>
   );
 }
@@ -17,6 +21,7 @@ export default function RootLayout() {
 function RootLayoutInner() {
   const { colors, scheme } = useTheme();
   const { ready, error } = useDatabaseReady();
+  const { locked } = useAppLock();
 
   if (error) {
     return (
@@ -36,6 +41,15 @@ function RootLayoutInner() {
       <View style={[styles.center, { backgroundColor: colors.bg }]}>
         <ActivityIndicator color={colors.sale} />
       </View>
+    );
+  }
+
+  if (locked) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <LockScreen />
+      </SafeAreaProvider>
     );
   }
 
