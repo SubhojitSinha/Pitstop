@@ -1,3 +1,5 @@
+import JSZip from 'jszip';
+import { File, Paths } from 'expo-file-system';
 import { Database } from '../Database';
 import { parseCSVRecords, pickField, writeCSV } from '@/lib/csv';
 import { normalizeFlexibleDate, normalizeFlexibleTime, DateRange } from '@/lib/periods';
@@ -5,6 +7,12 @@ import { normalizeFlexibleDate, normalizeFlexibleTime, DateRange } from '@/lib/p
 export interface ImportResult {
   imported: number;
   skipped: number;
+}
+
+export interface BackupImportResult {
+  products: ImportResult;
+  sales: ImportResult;
+  purchases: ImportResult;
 }
 
 /**
@@ -179,5 +187,51 @@ export class DataExchangeService {
     });
 
     return { imported, skipped };
+  }
+
+  // ---------- Full backup (zip) ----------
+
+  /** Bundles products/sales/purchases CSVs into one .zip file in the cache directory, ready to share. */
+  async createBackupZip(): Promise<File> {
+    const [productsCSV, salesCSV, purchasesCSV] = await Promise.all([
+      this.exportProductsCSV(),
+      this.exportSalesCSV(),
+      this.exportPurchasesCSV(),
+    ]);
+
+    const zip = new JSZip();
+    zip.file('products.csv', productsCSV);
+    zip.file('sales.csv', salesCSV);
+    zip.file('purchases.csv', purchasesCSV);
+    const bytes = await zip.generateAsync({ type: 'uint8array' });
+
+    const filename = `pitstop-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+    const file = new File(Paths.cache, filename);
+    if (file.exists) file.delete();
+    file.create();
+    file.write(bytes);
+    return file;
+  }
+
+  /** Restores from a backup .zip produced by createBackupZip(). Products are imported before sales/purchases so foreign keys resolve. */
+  async restoreFromBackupZip(fileUri: string): Promise<BackupImportResult> {
+    const bytes = await new File(fileUri).bytes();
+    const zip = await JSZip.loadAsync(bytes);
+
+    const readEntry = async (name: string) => {
+      const entry = zip.file(name);
+      return entry ? entry.async('string') : null;
+    };
+
+    const empty: ImportResult = { imported: 0, skipped: 0 };
+    const productsCSV = await readEntry('products.csv');
+    const salesCSV = await readEntry('sales.csv');
+    const purchasesCSV = await readEntry('purchases.csv');
+
+    const products = productsCSV ? await this.importProductsCSV(productsCSV) : empty;
+    const sales = salesCSV ? await this.importSalesCSV(salesCSV) : empty;
+    const purchases = purchasesCSV ? await this.importPurchasesCSV(purchasesCSV) : empty;
+
+    return { products, sales, purchases };
   }
 }
