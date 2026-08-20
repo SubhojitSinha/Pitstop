@@ -16,8 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '@/hooks/useTheme';
 import { useProductService, usePurchaseService } from '@/hooks/useServices';
 import { Stepper } from '@/components/Stepper';
+import { InlineDatePicker } from '@/components/InlineDatePicker';
 import { formatCurrency } from '@/lib/format';
-import { todayDateString, nowTimeString } from '@/lib/datetime';
+import { nowTimeString } from '@/lib/datetime';
+import { toISODate } from '@/lib/periods';
 import type { Product } from '@/db/models/Product';
 
 const QUICK_ADD = [5, 10, 25];
@@ -42,6 +44,8 @@ export default function PurchaseScreen() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [transactionDate, setTransactionDate] = useState(() => new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -111,7 +115,7 @@ export default function PurchaseScreen() {
   async function performSave() {
     setSaving(true);
     try {
-      const date = todayDateString();
+      const date = toISODate(transactionDate);
       const time = nowTimeString();
       await purchaseService.createMany(
         cart.map((l) => ({
@@ -123,6 +127,7 @@ export default function PurchaseScreen() {
         }))
       );
       setCart([]);
+      setTransactionDate(new Date());
       router.push('/');
     } finally {
       setSaving(false);
@@ -134,6 +139,19 @@ export default function PurchaseScreen() {
       <View style={{ paddingHorizontal: spacing.xl, paddingTop: spacing.sm }}>
         <Text style={[styles.eyebrow, { color: colors.inkFaint }]}>New entry</Text>
         <Text style={[styles.title, { color: colors.purchase }]}>Purchase</Text>
+
+        <Pressable
+          onPress={() => setShowDatePicker(true)}
+          style={[styles.dateRow, { borderColor: colors.lineStrong, borderRadius: radius.control }]}
+        >
+          <Ionicons name="calendar-outline" size={16} color={colors.inkSoft} />
+          <Text style={{ color: colors.ink, fontSize: 13, fontWeight: '700' }}>
+            {toISODate(transactionDate) === toISODate(new Date())
+              ? 'Today'
+              : transactionDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </Text>
+          <Text style={{ color: colors.inkFaint, fontSize: 12 }}>· tap to change</Text>
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.md }}>
@@ -290,6 +308,14 @@ export default function PurchaseScreen() {
           </View>
         </SafeAreaView>
       </Modal>
+
+      <InlineDatePicker
+        visible={showDatePicker}
+        value={transactionDate}
+        maximumDate={new Date()}
+        onChange={setTransactionDate}
+        onClose={() => setShowDatePicker(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -297,6 +323,16 @@ export default function PurchaseScreen() {
 const styles = StyleSheet.create({
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 0.6, textTransform: 'uppercase' },
   title: { fontSize: 22, fontWeight: '700' },
+  dateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    marginTop: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
   fieldLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
   emptyCard: {
     borderWidth: StyleSheet.hairlineWidth,
